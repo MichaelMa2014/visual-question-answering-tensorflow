@@ -1,13 +1,13 @@
 import os,sys
 import numpy as np
-import tensorflow as tf 
+import tensorflow as tf
 import data_loader as dl
 import pickle
 import skimage
 import skimage.io
 import skimage.transform
 from itertools import cycle
-import word2glove as w2g 
+import word2glove as w2g
 from tensorflow.contrib import rnn
 
 def model(sess, batch_size):
@@ -18,38 +18,38 @@ def model(sess, batch_size):
     ans = tf.placeholder("float", [None, 1000], name="ans")
 
     with tf.variable_scope('Image') as scope:
-	    img_w = tf.Variable(tf.random_normal([1,1,512,128]), name="weight") 
-	    img_b = tf.Variable(tf.random_normal([128]), name="bias") 
-	    img_conv = tf.nn.conv2d(image, img_w, strides=[1,1,1,1], padding='SAME')
-	    img_feature = tf.nn.relu(img_conv + img_b, name="activation")
-	    variable_summaries(img_w)
-    
-    # Learn semantics of question using LSTM 
+        img_w = tf.Variable(tf.random_normal([1,1,512,128]), name="weight")
+        img_b = tf.Variable(tf.random_normal([128]), name="bias")
+        img_conv = tf.nn.conv2d(image, img_w, strides=[1,1,1,1], padding='SAME')
+        img_feature = tf.nn.relu(img_conv + img_b, name="activation")
+        variable_summaries(img_w)
+
+    # Learn semantics of question using LSTM
     with tf.variable_scope('Question') as scope:
-        ques_w = tf.Variable(tf.random_normal([256, 128]), name="W_qa") 
+        ques_w = tf.Variable(tf.random_normal([256, 128]), name="W_qa")
         ques_b = tf.Variable(tf.random_normal([128]), name="b_A")
         ques_sem = ques_semantics(ques, ques_w, ques_b)
         ques_vec = tf.reshape(ques_sem, shape=[-1, 1, 1, 128])
         variable_summaries(ques_w)
-    
+
     # Get attention probabilities
     with tf.variable_scope('Attention') as scope:
-    	with tf.variable_scope('embedding') as scope:
-        	visual_embed = tf.multiply(img_feature, ques_vec)
-        	variable_summaries(visual_embed)
+        with tf.variable_scope('embedding') as scope:
+            visual_embed = tf.multiply(img_feature, ques_vec)
+            variable_summaries(visual_embed)
 
         with tf.variable_scope('probability') as scope:
-        	embed_squeeze = tf.reduce_sum(tf.reduce_sum(visual_embed, axis=2), axis=1)
-        	attention_prob = tf.nn.softmax(embed_squeeze, name="p_I")
-    
+            embed_squeeze = tf.reduce_sum(tf.reduce_sum(visual_embed, axis=2), axis=1)
+            attention_prob = tf.nn.softmax(embed_squeeze, name="p_I")
+
     # Build reduced Image feature using attention map
     with tf.variable_scope('ReducedImage') as scope:
-    	attention_prob = tf.reshape(attention_prob, shape=[-1,1,1,128])
+        attention_prob = tf.reshape(attention_prob, shape=[-1,1,1,128])
         rimage_feature = tf.multiply(img_feature, attention_prob)
         variable_summaries(rimage_feature)
         reduced_image_visualize = tf.reshape(tf.reduce_sum(rimage_feature, axis=3), shape=[-1, 14, 14, 1])
         attention_summary = tf.summary.image('weighted-features', reduced_image_visualize)
-        
+
     # Adding a convolution layer to reduce dimensions
     with tf.variable_scope('RImage') as scope:
         red_img_w = tf.Variable(tf.random_normal([1,1,128,8]), name="weight")
@@ -60,37 +60,37 @@ def model(sess, batch_size):
         variable_summaries(red_img_w)
 
     with tf.variable_scope('Image') as scope:
-        img_w = tf.Variable(tf.random_normal([1,1,128,8]), name="weight") 
-        img_b = tf.Variable(tf.random_normal([8]), name="bias") 
+        img_w = tf.Variable(tf.random_normal([1,1,128,8]), name="weight")
+        img_b = tf.Variable(tf.random_normal([8]), name="bias")
         img_conv = tf.nn.conv2d(img_feature, img_w, strides=[1,1,1,1], padding='SAME')
         img_activ = tf.nn.relu(img_conv + img_b, name="activation")
         image_feature = tf.reshape(img_activ, shape=[-1, 1568])
         variable_summaries(img_w)
 
-    
+
     # Combine all three features to build dense layer
     with tf.variable_scope('Dense') as scope:
-    	with tf.variable_scope('question') as scope:
-        	sem_dense_w = tf.Variable(tf.random_normal([128, 1000]), name="q_weight")
-        	variable_summaries(sem_dense_w)
+        with tf.variable_scope('question') as scope:
+            sem_dense_w = tf.Variable(tf.random_normal([128, 1000]), name="q_weight")
+            variable_summaries(sem_dense_w)
 
         with tf.variable_scope('image') as scope:
-        	img_dense_w = tf.Variable(tf.random_normal([1568, 1000]), name="i_weight") 
-        	variable_summaries(img_dense_w)
+            img_dense_w = tf.Variable(tf.random_normal([1568, 1000]), name="i_weight")
+            variable_summaries(img_dense_w)
 
         with tf.variable_scope('attention') as scope:
-        	reduced_img_dense_w = tf.Variable(tf.random_normal([1568, 1000]), name="ri_weight") 
-        	variable_summaries(reduced_img_dense_w)
+            reduced_img_dense_w = tf.Variable(tf.random_normal([1568, 1000]), name="ri_weight")
+            variable_summaries(reduced_img_dense_w)
 
         with tf.variable_scope('bias') as scope:
-        	dense_b = tf.Variable(tf.random_normal([1000]), name="ans_bias")
-        	variable_summaries(dense_b)
-    
+            dense_b = tf.Variable(tf.random_normal([1000]), name="ans_bias")
+            variable_summaries(dense_b)
+
         dense = tf.matmul(ques_sem, sem_dense_w) + \
                 tf.matmul(reduced_image_feature, reduced_img_dense_w) + \
                 tf.matmul(image_feature, img_dense_w) + \
-		dense_b
-                
+        dense_b
+
     # Apply softmax on dense layer to get answers
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=dense, labels=ans)
     mean_cross_entropy = tf.reduce_mean(cross_entropy)
@@ -108,12 +108,12 @@ def model(sess, batch_size):
     return image, ques, ans, optimizer, mean_cross_entropy, accuracy
 
 def rgb_histogram(im):
-    rhist,_ = np.histogram(np.reshape(im[:,:,0], (1,-1)), bins=np.arange(257))  
-    ghist,_ = np.histogram(np.reshape(im[:,:,1], (1,-1)), bins=np.arange(257))    
-    bhist,_ = np.histogram(np.reshape(im[:,:,2], (1, -1)), bins=np.arange(257))  
+    rhist,_ = np.histogram(np.reshape(im[:,:,0], (1,-1)), bins=np.arange(257))
+    ghist,_ = np.histogram(np.reshape(im[:,:,1], (1,-1)), bins=np.arange(257))
+    bhist,_ = np.histogram(np.reshape(im[:,:,2], (1, -1)), bins=np.arange(257))
     hist = np.append((rhist, ghist, bhist), 0)
     return hist
-    
+
 def ques_semantics(word, weight, bias):
     with tf.variable_scope('LSTM') as scope:
         word = tf.unstack(word, 22, 1)
@@ -125,7 +125,7 @@ def ques_semantics(word, weight, bias):
 def write_tensorboard(sess):
     writer = tf.summary.FileWriter('graph/log/', sess.graph)
     return writer
-    
+
 def variable_summaries(var):
     with tf.name_scope('summaries'):
         mean = tf.reduce_mean(var)
