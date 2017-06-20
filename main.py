@@ -38,7 +38,7 @@ def preprocess_question():
             print "COMPLETED Missing question words identification"
 
 def train():
-    batch_size = 1000
+    batch_size = 100
     print "Starting ABC-CNN training"
     vqa = dl.load_questions_answers('data')
 
@@ -72,30 +72,35 @@ def train():
         itr = 1
 
         while itr < max_itr:
-            run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-            run_metadata = tf.RunMetadata()
+            print "Start iteration %d" % itr
+            # run_options = tf.RunOptions(trace_level=tf.RunOptions.NO_TRACE)
+            # run_metadata = tf.RunMetadata()
 
             _, vgg_batch, ques_batch, answer_batch = train_loader.next()
-            _, valid_vgg_batch, valid_ques_batch, valid_answer_batch = valid_loader.next()
             sess.run(optimizer, feed_dict={image: vgg_batch, ques: ques_batch, ans: answer_batch})
-            [train_summary, train_loss, train_accuracy] = sess.run([merged, loss, accuracy],
-                                                    feed_dict={image: vgg_batch, ques: ques_batch, ans: answer_batch},
-                                                    options=run_options,
-                                                    run_metadata=run_metadata)
-            [valid_loss, valid_accuracy] = sess.run([loss, accuracy],
+            # [train_summary, train_loss, train_accuracy] = sess.run([merged, loss, accuracy],
+                                                    # feed_dict={image: vgg_batch, ques: ques_batch, ans: answer_batch},
+                                                    # options=run_options,
+                                                    # run_metadata=run_metadata)
+
+            # writer.add_run_metadata(run_metadata, 'step%03d' % itr)
+            # writer.add_summary(train_summary, itr)
+            # writer.flush()
+            # print "iteration:%d\ttraining loss:%f\ttraining accuracy:%f%%\t" % (itr, train_loss, 100.*train_accuracy)
+
+            if itr % 10 == 0:
+                _, valid_vgg_batch, valid_ques_batch, valid_answer_batch = valid_loader.next()
+                [valid_loss, valid_accuracy] = sess.run([loss, accuracy],
                                                     feed_dict={image: valid_vgg_batch,
                                                     ques: valid_ques_batch,
                                                     ans: valid_answer_batch})
 
-            writer.add_run_metadata(run_metadata, 'step%03d' % itr)
-            writer.add_summary(train_summary, itr)
-            writer.flush()
-            print "Iteration:%d\tTraining Loss:%f%%\tTraining Accuracy:%f\tValidation Loss:%f\tValidation Accuracy:%f%%"%(
-                itr, train_loss, 100.*train_accuracy, valid_loss, 100.*valid_accuracy)
+                print "validation loss:%f\tvalidation accuracy:%f%%" % (valid_loss, 100.*valid_accuracy)
+
             itr += 1
 
 if __name__ == '__main__':
-    warnings.filterwarnings("ignore")
+    # warnings.filterwarnings("ignore")
     preprocess_question()
     train()
 
