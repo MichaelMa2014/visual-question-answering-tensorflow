@@ -20,7 +20,11 @@ def model(sess, batch_size):
     with tf.variable_scope('Image') as scope:
         img_w = tf.Variable(tf.random_normal([1,1,512,128]), name="weight")
         img_b = tf.Variable(tf.random_normal([128]), name="bias")
+        # image is called `input`, shape means [batch, in_height, in_width, in_channels]
+        # img_w is called `filter`, shape means [height, width, in_channels, out_channels]
+        # img_cov will be of shape [N, 14, 14, 128]
         img_conv = tf.nn.conv2d(image, img_w, strides=[1,1,1,1], padding='SAME')
+        # img_b will be broadcasted to [N, 14, 14, 128]
         img_feature = tf.nn.relu(img_conv + img_b, name="activation")
         variable_summaries(img_w)
 
@@ -28,18 +32,19 @@ def model(sess, batch_size):
     with tf.variable_scope('Question') as scope:
         ques_w = tf.Variable(tf.random_normal([256, 128]), name="W_qa")
         ques_b = tf.Variable(tf.random_normal([128]), name="b_A")
-        ques_sem = ques_semantics(ques, ques_w, ques_b)
-        ques_vec = tf.reshape(ques_sem, shape=[-1, 1, 1, 128])
+        ques_sem = ques_semantics(ques, ques_w, ques_b)  # [N, 128]
+        ques_vec = tf.reshape(ques_sem, shape=[-1, 1, 1, 128])  # [N, 1, 1, 128]
         variable_summaries(ques_w)
 
     # Get attention probabilities
     with tf.variable_scope('Attention') as scope:
         with tf.variable_scope('embedding') as scope:
-            visual_embed = tf.multiply(img_feature, ques_vec)
+            # multiply will do a element-wise multiplication, but the first dimension is None?
+            visual_embed = tf.multiply(img_feature, ques_vec)  # [N, 14, 14, 128]
             variable_summaries(visual_embed)
 
         with tf.variable_scope('probability') as scope:
-            embed_squeeze = tf.reduce_sum(tf.reduce_sum(visual_embed, axis=2), axis=1)
+            embed_squeeze = tf.reduce_sum(tf.reduce_sum(visual_embed, axis=2), axis=1)  # [N, 128]
             attention_prob = tf.nn.softmax(embed_squeeze, name="p_I")
 
     # Build reduced Image feature using attention map
@@ -89,7 +94,7 @@ def model(sess, batch_size):
         dense = tf.matmul(ques_sem, sem_dense_w) + \
                 tf.matmul(reduced_image_feature, reduced_img_dense_w) + \
                 tf.matmul(image_feature, img_dense_w) + \
-        dense_b
+                dense_b
 
     # Apply softmax on dense layer to get answers
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=dense, labels=ans)
@@ -116,10 +121,10 @@ def rgb_histogram(im):
 
 def ques_semantics(word, weight, bias):
     with tf.variable_scope('LSTM') as scope:
-        word = tf.unstack(word, 22, 1)
+        word = tf.unstack(word, 22, 1)  # list of 22 * [None, 50]
         lstm_cell = rnn.BasicLSTMCell(256, forget_bias=1.0)
         output, states = rnn.static_rnn(lstm_cell, word, dtype=tf.float32)
-        ques_sem = tf.matmul(states[-1], weight) + bias
+        ques_sem = tf.matmul(states[-1], weight) + bias  # [None, 128]
         return tf.nn.relu(ques_sem, "ques-semantics-acitvation")
 
 def write_tensorboard(sess):
